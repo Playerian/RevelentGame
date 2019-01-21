@@ -1,0 +1,9 @@
+#canvasDiv{
+    width: 224px;
+    height: 224px;
+    border: solid;
+}
+
+#preLoad{
+    visibility: hidden;
+}
