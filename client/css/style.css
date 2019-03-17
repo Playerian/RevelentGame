@@ -2,8 +2,212 @@
     width: 224px;
     height: 224px;
     border: solid;
+    display:flex;
+    flex-wrap:wrap;
+}
+
+#canvas{
+    position:relative;
+    pointer-events: none;
+}
+
+#mainGame{
+    display:none;
 }
 
 #preLoad{
     visibility: hidden;
 }
+
+#waiting{
+    display:none;
+}
+
+/* waiting css*/
+#draw{
+    width:10px;
+    height:100px;
+    background:black;
+    transform: rotate(0deg);
+    position:relative;
+    left:50px;
+    animation: rotate 2.5s infinite ease-in-out
+    ,colorFade 14s infinite;
+}
+
+@keyframes colorFade{
+    from {
+        background: red;
+    }
+    14% {
+        background: orange;
+    }
+    28% {
+        background: yellow;
+    }
+    42% {
+        background: green;
+    }
+    56% {
+        background: cyan;
+    }
+    70% {
+        background: blue;
+    }
+    88% {
+        background: purple;
+    }
+    to {
+        background: red;
+    }
+}
+
+@keyframes rotate{
+    from {
+        transform: rotate(0deg);
+    }
+    50% {
+        transform: rotate(180deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+/* end of waiting css*/
+
+/* tooltip css*/
+#toolTips{
+    border: black 2px solid;
+    width: 200px;
+    height: auto;
+    background: #aaa950;
+    display: flex;
+    flex-wrap: wrap;
+    position: absolute;
+    z-index: 2;
+}
+
+#name{
+    font-size: 25px;
+}
+
+#class{
+    font-size: 15px;
+}
+
+#inventory, #extra{
+    display:flex;
+    vertical-align: middle;
+    flex-wrap:wrap;
+    width:100%;
+}
+
+.item{
+    display:flex;
+    width: 100%;
+    margin-bottom: 1px;
+}
+
+.flex{
+    display: flex;
+}
+
+.inventory{
+    font-size: 20px;
+}
+
+.fullLength{
+    width: 100%;
+}
+
+.center{
+    text-align:center;
+}
+
+.borderLine{
+    width:100%;
+    border-top:solid;
+}
+
+.columns{
+    width:50%;
+}
+
+.icon{
+    width:32px;
+    height: 32px;
+}
+
+.description{
+    border: black 2px solid;
+    width: 150px;
+    height: auto;
+    background: #aaa950;
+    display: flex;
+    flex-wrap: wrap;
+    z-index: 3;
+    display: none;
+    position: absolute;
+}
+/* end of tooltip css*/
+
+/* menu css */
+#table{
+    display:inline-block;
+    flex-wrap:wrap;
+    border:solid 1px black;
+    margin-top: 5px;
+    padding: 5px;
+    background: lime;
+}
+
+#menuBar{
+    display:inline-block;
+    justify-content: space-around;
+    border: solid 1px black;
+    padding: 5px;
+    background: yellow;
+    width: 100%;
+}
+
+.menu{
+    display:flex;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.menuButtons{
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+#tableContent{
+    padding: 5px;
+    background: #ffcccc;
+    display: flex;
+}
+
+.shopMenu{
+    width: 100%;
+}
+
+.menuTitle{
+    text-align:center;
+    margin-bottom: 15px;
+}
+
+/* block css */
+.unitBlock{
+    display: flex;
+    height: 32px;
+}
+
+.costDiv{
+    text-align: right;
+    display: flex;
+    margin-left:auto;
+    margin-right:0;
+}
+/* end of block css*/
+
+/* end of menu css */

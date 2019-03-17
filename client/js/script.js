@@ -1,118 +1,403 @@
+//shit
 
 // JavaScript File
 /*global io $ navigator Image*/
+const debugging = true;
+const isMobile = /(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|ipad|iris|kindle|Android|Silk|lge |maemo|midp|mmp|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i.test(navigator.userAgent) || /1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i.test(navigator.userAgent.substr(0,4))
 
 //socket init
-//var socket = io.connect(window.location.href);
-
+var socket = io.connect(window.location.href);
+$('#enter').on('click', function(evt){
+    let value = $('#input').val();
+    //emit username
+    socket.emit('requestGame', {username: value});
+});
+//debugging tool
+socket.on('print', function(data){
+    console.log(data);
+});
+//socket event
+socket.on('registered', function(){
+    $('#waiting').show();
+    $("#start").hide();
+    socket.on('game', function(game, user){
+        initGame(socket, game);
+    });
+});
+if (debugging){
+    socket.on('game', function(game, user){
+        initGame(socket, game, user);
+        $('#waiting').hide();
+        $("#start").hide();
+        socket.on('render', function(renderBoard){
+            game.board = renderBoard.board;
+        });
+    });
+}
 //canvas init
 var c = document.getElementById("canvas");
+var $canvas = $('#canvasDiv');
 var ctx = c.getContext("2d");
-var camera = {
-    x: 0,
-    y: 0
+//camera init
+function newCam(){
+    this.game = undefined;
+    this.locked = false;
+    this.x = 0;
+    this.y = 0;
+    this.shiftTo = function(x, y, callback){
+        if (x > this.game.rectSize * 32){
+            x = this.game.rectSize * 32;
+        }
+        if (x < 0){
+            x = 0;
+        }
+        if (y > this.game.rectSize * 32){
+            y = this.game.rectSize * 32;
+        }
+        if (y < 0){
+            y = 0;
+        }
+        this.locked = true;
+        const frames = 50;
+        //move in 1 second
+        let xpixel = (x - this.x) / frames;
+        let ypixel = (y - this.y) / frames;
+        let times = 0;
+        var interval = setInterval(function(){
+            camera.x += xpixel;
+            camera.y += ypixel;
+            times ++;
+            //rendering map
+            camera.game.mapping.drawBG(camera.x, camera.y);
+            camera.game.mapping.drawUnits();
+            //exit
+            if (times === frames){
+                camera.locked = false;
+                clearInterval(interval);
+                if (typeof callback === 'function'){
+                    callback();
+                }
+            }
+        }, 25);
+    }
 }
+var camera = new newCam();
+let lockKeys = false;
 var rectSize = 15;
 $('#canvasDiv').css('width', (rectSize * 32) + 'px');
 $('#canvasDiv').css('height', (rectSize * 32) + 'px');
 
-var wall = $('<img>').attr('src', 'img/wall.png')[0];
-var road = $('<img>').attr('src', 'img/road.png')[0];
-
-var map1 = [
-  ['r','r','r','r','r','r','t','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r'],
-  ['r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','t','r','r','r','r','r','n','r'],
-  ['r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r'],
-  ['r','r','r','r','r','r','w','w','w','w','r','w','w','w','w','w','w','w','r','w','w','w','w','w','r','r','r','r','r','r'],
-  ['r','r','r','r','r','r','r','w','w','r','r','r','r','w','w','w','w','r','r','w','w','w','w','r','r','t','r','r','r','r'],
-  ['t','r','r','w','r','r','r','w','r','r','w','w','r','r','w','w','r','r','w','w','w','w','r','r','r','r','r','r','r','r'],
-  ['r','r','r','w','w','r','r','r','r','w','w','w','w','r','r','r','r','r','w','w','w','r','r','r','r','r','w','r','r','r'],
-  ['r','r','r','w','w','w','r','r','r','r','s','w','w','w','w','r','r','r','r','r','r','r','r','r','r','w','w','r','t','r'],
-  ['r','r','r','w','w','r','r','r','r','r','r','w','w','w','w','w','w','w','r','r','r','r','r','r','w','w','w','r','r','r'],
-  ['r','r','r','w','r','r','r','w','r','r','r','w','w','w','w','w','w','w','r','r','r','r','r','w','w','w','w','r','r','r'],
-  ['r','r','r','r','r','r','w','w','w','r','r','r','w','w','w','w','w','r','r','r','r','r','w','w','w','r','r','r','r','r'],
-  ['r','r','r','r','r','w','w','w','r','r','r','r','r','w','w','w','r','r','r','r','r','w','w','w','w','r','r','r','r','r'],
-  ['r','r','r','r','r','w','w','r','r','r','r','r','r','r','w','r','r','r','r','t','r','w','w','w','r','r','w','r','r','r'],
-  ['r','r','r','w','r','w','r','r','w','w','w','w','r','r','r','r','r','r','r','w','r','w','w','w','r','w','w','r','r','r'],
-  ['r','r','r','w','r','r','r','r','r','w','w','w','w','r','r','r','r','r','w','w','r','r','w','w','r','w','w','r','r','r'],
-  ['r','r','r','w','w','r','w','r','r','w','w','w','r','r','r','r','r','w','w','w','w','r','r','r','r','r','w','r','r','r'],
-  ['r','r','r','w','w','r','w','w','r','w','w','r','r','r','r','r','r','r','w','w','w','w','r','r','w','r','w','r','r','r'],
-  ['r','r','r','w','r','r','w','w','r','w','t','r','r','r','r','w','r','r','r','r','r','r','r','w','w','r','r','r','r','r'],
-  ['r','r','r','r','r','w','w','w','r','r','r','r','r','r','w','w','w','r','r','r','r','r','r','w','w','r','r','r','r','r'],
-  ['r','r','r','r','r','w','w','w','r','r','r','r','r','w','w','w','w','r','r','r','r','w','w','w','r','r','r','r','r','r'],
-  ['r','r','r','w','w','w','w','r','r','r','r','r','w','w','w','w','w','r','w','r','r','r','w','r','r','r','w','r','r','r'],
-  ['r','r','r','w','w','w','r','r','r','r','r','r','r','r','w','w','r','r','w','r','r','r','r','r','r','w','w','r','r','r'],
-  ['r','t','r','w','w','r','r','r','r','r','w','w','w','r','r','r','r','r','w','d','r','r','r','r','w','w','w','r','r','r'],
-  ['r','r','r','w','r','r','r','r','r','w','w','w','w','r','r','r','w','r','r','w','w','w','r','r','r','w','w','r','r','r'],
-  ['r','r','r','r','r','r','r','r','w','w','w','w','r','r','w','w','w','w','r','r','w','r','r','r','r','r','w','r','r','t'],
-  ['r','r','r','r','t','r','r','w','w','w','w','r','r','w','w','w','w','w','w','r','r','r','w','w','r','r','r','r','r','r'],
-  ['r','r','r','r','r','r','w','w','w','w','w','r','w','w','w','w','w','w','w','w','r','w','w','w','w','r','r','r','r','r'],
-  ['r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r'],
-  ['r','n','r','r','r','r','t','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r'],
-  ['r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','t','r','r','r','r','r']
-];
-
-var game = {};
-//map class
-function Mapping(map){
-    map.forEach(function(v, i){
-        v.forEach(function(v2, i2){
-            if (v2 === 'r' || v2 === 'n' || v2 === 't'){
-                ctx.drawImage(road, i2 * 32, i * 32);
-            }else if (v2 === 'w'){
-                ctx.drawImage(wall, i2 * 32, i * 32);
-            }
+//utility
+function setToolTip(unit){
+    let $toolTip = $('#toolTips');
+    let $descri = $('.description');
+    $descri.hide();
+    $toolTip.find('#name').text(unit.name);
+    $toolTip.find('#class').text(unit.type);
+    //attributes
+    $toolTip.find('#hp').text(`hp: ${unit.hp}`);
+    $toolTip.find('#spd').text(`spd: ${unit.spd}`);
+    $toolTip.find('#mbi').text(`mbi: ${unit.mbi}`);
+    $toolTip.find('#atk').text(`atk: ${unit.atk}`);
+    $toolTip.find('#def').text(`def: ${unit.def}`);
+    $toolTip.find('#mdf').text(`mdf: ${unit.mdf}`);
+    //inventory
+    let $inv = $toolTip.find('#inventory');
+    $inv.empty();
+    let $extra = $toolTip.find('#extra');
+    $extra.empty();
+    let inv = unit.inventory;
+    inv.space.forEach((v, i)=>{
+        let item = v;
+        console.log(item);
+        let $item = $('<div>').addClass('item');
+        $inv.append($item);
+        let $image = $('<img>').addClass('icon').attr('src', item.image);
+        $item.append($image);
+        let $itemName = $('<div>').addClass('itemName').text(item.name);
+        $item.append($itemName);
+        $item.click(function(event){
+            $descri.show();
+            $descri.find('.itemName').text(item.name);
+            $descri.find('.goldNumber').text(item.cost);
+            $descri.find('.descri').text(item.descri);
+            //move it to mouse
+            let mousex = event.pageX;
+            let mousey = event.pageY;
+            $descri.offset({left: mousex + 5, top: mousey + 5});
         });
     });
-    this.image = new Image();
-	this.image.src = ctx.canvas.toDataURL("image/png");
-	ctx.clearRect(0,0,c.width, c.height)
+    inv.extra.forEach((v, i)=>{
+        let item = v;
+        let $item = $('<div>').addClass('item');
+        $extra.append($item);
+        let $image = $('<img>').addClass('icon').attr('src', item.image);
+        $item.append($image);
+        console.log(item.image);
+        let $itemName = $('<div>').addClass('itemName').text(item.name);
+        $item.append($itemName);
+        $item.hover(function(){
+            $(".description").show();
+        }, function(){
+            $(".description").hide();
+        });
+    });
+    return $toolTip
 }
-Mapping.prototype.draw = function(context, x, y){
-    ctx.clearRect(0,0,c.width, c.height)
-    var dx = 0, dy = 0;
-    var sx = x, sy = y;
-    var sWidth =  rectSize * 32;
-	var sHeight = rectSize * 32;
 
-	// if cropped image is smaller than canvas we need to change the source dimensions
-	if(this.image.width - sx < sWidth){
-		sWidth = this.image.width - sx;
-	}
-	if(this.image.height - sy < sHeight){
-		sHeight = this.image.height - sy; 
-	}
-	var dWidth = sWidth;
-	var dHeight = sHeight;	
-    context.drawImage(this.image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);			
+//including sprites
+var $wall = $('<img>').attr('src', 'img/tiles/wall.png')[0];
+var $road = $('<img>').attr('src', 'img/tiles/road.png')[0];
+var $tower = $('<img>').attr('src', 'img/units/tower.png')[0];
+var $nexus = $('<img>').attr('src', 'img/units/nexus.png')[0];
+
+//game stuff
+function initGame(socket, game, user){
+    //initing
+    camera.game = game;
+    $('#mainGame').show();
+    $('#waiting').hide();
+    game.ctx = ctx;
+    game.socket = socket;
+    if (game.p1.name === user.name){
+        game.you = game.p1;
+    }else{
+        game.you = game.p2;
+    }
+    window.game = game;
+    console.log(game);
+    //map class def
+    function Mapping(map){
+        //initial loading
+        map.forEach(function(v, i){
+            v.forEach(function(v2, i2){
+                if (v2 === 'r' || v2 === 'n' || v2 === 't'){
+                    ctx.drawImage($road, i2 * 32, i * 32);
+                }else if (v2 === 'w'){
+                    ctx.drawImage($wall, i2 * 32, i * 32);
+                }
+            });
+        });
+        this.image = new Image();
+    	this.image.src = ctx.canvas.toDataURL("image/png");
+    	ctx.clearRect(0,0,c.width, c.height)
+    	//methods
+    	this.drawBG = function(x, y){
+            ctx.clearRect(0,0,c.width, c.height)
+            var dx = 0, dy = 0;
+            var sx = x, sy = y;
+            var sWidth =  rectSize * 32;
+        	var sHeight = rectSize * 32;
+        
+        	// if cropped image is smaller than canvas we need to change the source dimensions
+        	if(this.image.width - sx < sWidth){
+        		sWidth = this.image.width - sx;
+        	}
+        	if(this.image.height - sy < sHeight){
+        		sHeight = this.image.height - sy; 
+        	}
+        	var dWidth = sWidth;
+        	var dHeight = sHeight;	
+            ctx.drawImage(this.image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);			
+    	};
+        this.renderable = function(x, y){
+            var checkPoint = 0;
+            if (x - camera.x >= -32){
+                checkPoint ++;
+            }
+            if (x - camera.x <= rectSize * 32){
+                checkPoint ++;
+            }
+            if (y - camera.y >= -32){
+                checkPoint ++;
+            }
+            if (y - camera.y <= rectSize * 32){
+                checkPoint ++;
+            }
+            if (checkPoint === 4){
+                return true;
+            }
+        }
+        this.drawUnits = function(){
+            //getting all units
+            let f = this.renderable;
+            let list = game.board.unitLists;
+            list.forEach(function(v, i){
+                //v here is not pixel but is index
+                let unit = v;
+                if (f(unit.x * 32, unit.y * 32)){
+                    //draw 'em
+                    let image = new Image();
+                    image.src = unit.sprite;
+                	var dWidth = image.width;
+        	        var dHeight = image.height;	
+        	        var sWidth = dWidth;
+        	        var sHeight = dHeight;
+        	        if (sWidth + unit.x * 32 - camera.x > rectSize * 32){
+        	            sWidth = (rectSize * 32 - (unit.x * 32 - camera.x));
+        	        }
+        	        if (sHeight + unit.y * 32 - camera.y > rectSize * 32){
+        	            sHeight = (rectSize * 32 - (unit.y * 32 - camera.y));
+        	        }
+        	        dWidth = sWidth;
+        	        dHeight = sHeight;
+                    ctx.drawImage(image, 0, 0, sWidth, sHeight, unit.x * 32 - camera.x, unit.y * 32 - camera.y, dWidth, dHeight);
+                };
+            });
+        }
+        this.drawFog = function(){
+            //draw fog
+            let tiles = game.board.tiles;
+            ctx.globalAlpha = 0.5;
+            let topLeft = [Math.floor(camera.x / 32), Math.floor(camera.y / 32)];
+            //loop 15 tiles
+            for (let i = topLeft[0]; i <= topLeft[0] + rectSize; i ++){
+                for (let i2 = topLeft[1]; i2 <= topLeft[1] + rectSize; i2 ++){
+                    if (!tiles[i]){
+                        break;
+                    }
+                    if (!tiles[i][i2]){
+                        break;
+                    }
+                    if (tiles[i][i2].fog === false){
+                        continue;
+                    }
+                    //render
+                    let x, y, width, height;
+                    x = i;
+                    y = i2;
+                    width = 32;
+                    height = 32;
+                    if (x === 16){
+                        console.log();
+                    }
+                    if (width + x * 32 - camera.x > rectSize * 32){
+        	            width = (rectSize * 32 - (x * 32 - camera.x));
+        	        }
+        	        if (height + y * 32 - camera.y > rectSize * 32){
+        	            height = (rectSize * 32 - (y * 32 - camera.y));
+        	        }
+                    ctx.fillRect(x * 32 - camera.x, y * 32 - camera.y, width, height);
+                }
+            }
+            ctx.globalAlpha = 1;
+        };
+    }
+    let map = game.map;
+    console.log(map);
+    game.mapping = new Mapping(game.map);
+
+    
+    //camera-ing
+    let keys = {};
+    $(document).keypress(function(e){
+        keys[e.key] = true;
+    });
+    $(document).keyup(function(e){
+        keys[e.key] = false;
+    });
+    //key-ing
+    //on canvas only
+    $canvas.on(isMobile ? 'touchend' : 'click', function(evt){
+        // check for mouse click
+        var x = evt.pageX - $canvas.offset().left;
+        var y = evt.pageY - $canvas.offset().top;
+        console.log("X coords: " + x + ", Y coords: " + y);
+        //hiding stuff
+        let $toolTips = $('#toolTips');
+        $toolTips.css('visibility', 'visible');
+        $toolTips.hide();
+        //check if in canvas
+        if (x >= 0 && y >= 0 && x <= rectSize * 32 && y <= rectSize * 32){
+            console.log('in canvas');
+            //check unit
+            let xIndex = Math.floor((x + camera.x) / 32);
+            let yIndex = Math.floor((y + camera.y) / 32);
+            let tile = game.board.tiles[xIndex][yIndex];
+            if (tile.units.length > 0){
+                tile.units.forEach((v, i) => {
+                    $toolTips.show();
+                    setToolTip(v);
+                    $toolTips.offset({top: y, left: x});
+                });
+            }
+        }
+    });
+    //interval
+    setInterval(function(){
+        if (camera.locked){
+            return;
+        }
+        //movement of camera
+        if (keys.a && camera.x - 5 >= 0){
+            camera.x -= 5;
+            $('#toolTips').hide();
+        }
+        if (keys.d && camera.x + 5 <= c.width - rectSize * 32){
+            camera.x += 5;
+            $('#toolTips').hide();
+        }
+        if (keys.w && camera.y - 5 >= 0){
+            camera.y -= 5;
+            $('#toolTips').hide();
+        }
+        if (keys.s && camera.y + 5 <= c.height - rectSize * 32){
+            camera.y += 5;
+            $('#toolTips').hide();
+        }
+        //rendering map
+        game.mapping.drawBG(camera.x, camera.y);
+        game.mapping.drawUnits();
+        game.mapping.drawFog();
+    }, 25);
+    //move player according to p1 or p2
+    if (game.you === game.p1){
+        camera.shiftTo(0, 500);
+    }else{
+        camera.shiftTo(500, 0);
+    }
+    //unit constructor
+    function newUnitTile(image, name, cost, f){
+        let $unitBlock = $('<div>').addClass('unitBlock');
+        $unitBlock.attr('data-toggle', 'tooltip');
+        $unitBlock.attr('title', 'Purchase?');
+        let $img = $('<img>').attr('src', image)
+        $unitBlock.append($img);
+        let $unitName = $('<div>').text(name).addClass('unitName');
+        $unitBlock.append($unitName);
+        let $costDiv = $('<div>').addClass('costDiv');
+        let $cost = $('<div>').append(cost);
+        $costDiv.append($cost);
+        $costDiv.append($('<img>').attr('src', '/img/misc/money.png'));
+        $unitBlock.append($costDiv);
+        $unitBlock.click(function(){
+            $(this).tooltip("hide");
+            if (typeof f === 'function'){ 
+                f();
+            }
+        });
+        return $unitBlock;
+    }
+    //button of the unitlist
+    $('#unitButton').click(function(){
+        $('#tableContent').empty();
+    });
+    //button of the shoplist
+    $('#shopButton').click(function(){
+        //empty the thing
+        $('#tableContent').empty();
+        let $menu = $('<div>').addClass('shopMenu');
+        $('#tableContent').append($menu);
+        $menu.append($("<div>").text('Purchase Units').addClass('menuTitle'))
+        $menu.append(newUnitTile('img/units/baseUnit.png', 'base unit', 100));
+        //make tooltip alive
+        $('.unitBlock').tooltip(); 
+    });
+    //button of the setting
+    $('#settingButton').click(function(){
+        $('#tableContent').empty();
+    });
 }
-game.map = new Mapping(map1);
-game.map.draw(ctx, camera.x, camera.y);
-
-//camera-ing
-let keys = {};
-$(document).keypress(function(e){
-    keys[e.key] = true;
-});
-$(document).keyup(function(e){
-    keys[e.key] = false;
-});
-setInterval(function(){
-    if (keys.a && camera.x - 5 >= 0){
-        camera.x -= 5;
-    }
-    if (keys.d && camera.x + 5 <= c.width - rectSize * 32){
-        camera.x += 5;
-    }
-    if (keys.w && camera.y - 5 >= 0){
-        camera.y -= 5;
-    }
-    if (keys.s && camera.y + 5 <= c.height - rectSize * 32){
-        camera.y += 5;
-    }
-    game.map.draw(ctx, camera.x, camera.y);
-}, 100);
-
 
 
 
