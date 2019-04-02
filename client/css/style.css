@@ -211,3 +211,32 @@
 /* end of block css*/
 
 /* end of menu css */
+
+/* hintBar css */
+#hintBar{
+    font-size: 25px;
+    display: flex;
+    position: absolute;
+    pointer-events: none;
+}
+
+#hintMid{
+    background: #555;
+    padding-left: 15px;
+    padding-right: 15px;
+    width: 300px;
+}
+
+#hintLeft, #hintRight{
+    width: 0;
+	height: 0;
+	border-top: 20px solid transparent;
+	border-right: 40px solid #555;
+	border-bottom: 20px solid transparent;
+}
+
+#hintRight{
+    border-right: none;
+    border-left: 40px solid #555;
+}
+/* end of hintBar css */

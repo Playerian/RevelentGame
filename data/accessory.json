@@ -1,0 +1,13 @@
+{
+    "0": {
+        "name": "Double Preventer",
+        "descri": "Prevent User From Being Double",
+        "image": "/img/accessory/doublePreventer.png",
+        "cost": 0,
+        "hp": 0,
+        "atk": 0,
+        "spd": 0,
+        "def": 0,
+        "mdf": 0
+    }
+}

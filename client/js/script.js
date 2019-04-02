@@ -29,8 +29,26 @@ if (debugging){
         initGame(socket, game, user);
         $('#waiting').hide();
         $("#start").hide();
-        socket.on('render', function(renderBoard){
-            game.board = renderBoard.board;
+        //set render
+        socket.on('render', function(data){
+            //data
+            game.data = data;
+            //render board
+            game.board = data.board;
+            //update this player
+            Object.assign(game.you, data.player);
+            //remove tooltips and stuff
+            startRender();
+            camera.locked = false;
+            selecting = false;
+            hideHintBar();
+        });
+        game.socket.once('reset', function(){
+            //remove tooltips and stuff
+            startRender();
+            camera.locked = false;
+            selecting = false;
+            hideHintBar();
         });
     });
 }
@@ -68,8 +86,11 @@ function newCam(){
             camera.y += ypixel;
             times ++;
             //rendering map
-            camera.game.mapping.drawBG(camera.x, camera.y);
-            camera.game.mapping.drawUnits();
+            if (rendering){
+                camera.game.mapping.drawBG(camera.x, camera.y);
+                camera.game.mapping.drawUnits();
+                camera.game.mapping.drawFog();
+            }
             //exit
             if (times === frames){
                 camera.locked = false;
@@ -81,9 +102,14 @@ function newCam(){
         }, 25);
     }
 }
+//utility var
 var camera = new newCam();
 let lockKeys = false;
 var rectSize = 15;
+let selecting = false;
+let tooltipAppear = false;
+
+//set canvas 
 $('#canvasDiv').css('width', (rectSize * 32) + 'px');
 $('#canvasDiv').css('height', (rectSize * 32) + 'px');
 
@@ -145,6 +171,50 @@ function setToolTip(unit){
     return $toolTip
 }
 
+function hideToolTip(){
+    $('#toolTips').hide();
+    tooltipAppear = false;
+}
+
+function setHintBar(x, y, text, size, color, width, time){
+    let $bar = $("#hintBar");
+    $('#hintText').text(text);
+    $bar.css('visibility', 'visible');
+    $bar.css('left', x);
+    $bar.css('top', y);
+    $bar.show().css('font-size', size + 'px');
+    $bar.height($('#hintText').height());
+    $('#hintMid').height($('#hintText').height());
+    $("#hintLeft, #hintRight").css('border-top', `${$bar.height() / 2}px solid transparent`).css('border-bottom', `${$bar.height() / 2}px solid transparent`);
+    $("#hintLeft").css('border-right', `${$bar.height() / 2 * Math.sqrt(3)}px solid ${color}`);
+    $("#hintRight").css('border-left', `${$bar.height() / 2 * Math.sqrt(3)}px solid ${color}`);
+    $('#hintMid').css('background', color).css('width', `${width}px`);
+    if (time && typeof time === 'number'){
+        setTimeout(() =>{
+            $bar.hide();
+        }, time)
+    }
+    return $bar;
+}
+
+function hideHintBar(){
+    $('#hintBar').hide();
+}
+
+function renderGold(coin){
+    $('#currentGold').text(coin);
+}
+
+let rendering = true;
+
+function stopRender(){
+    rendering = false;
+}
+
+function startRender(){
+    rendering = true;
+}
+
 //including sprites
 var $wall = $('<img>').attr('src', 'img/tiles/wall.png')[0];
 var $road = $('<img>').attr('src', 'img/tiles/road.png')[0];
@@ -166,6 +236,8 @@ function initGame(socket, game, user){
     }
     window.game = game;
     console.log(game);
+    //print gold
+    $('#currentGold').text(user.coin);
     //map class def
     function Mapping(map){
         //initial loading
@@ -263,30 +335,44 @@ function initGame(socket, game, user){
                         continue;
                     }
                     //render
-                    let x, y, width, height;
-                    x = i;
-                    y = i2;
-                    width = 32;
-                    height = 32;
-                    if (x === 16){
-                        console.log();
-                    }
-                    if (width + x * 32 - camera.x > rectSize * 32){
-        	            width = (rectSize * 32 - (x * 32 - camera.x));
-        	        }
-        	        if (height + y * 32 - camera.y > rectSize * 32){
-        	            height = (rectSize * 32 - (y * 32 - camera.y));
-        	        }
-                    ctx.fillRect(x * 32 - camera.x, y * 32 - camera.y, width, height);
+                    this.drawRect(i, i2, 'black');
                 }
             }
             ctx.globalAlpha = 1;
+        };
+        this.drawRect = function(i, i2, color){
+            ctx.fillStyle = color;
+            let x, y, width, height;
+            x = i;
+            y = i2;
+            width = 32;
+            height = 32;
+            if (x === 16){
+                console.log();
+            }
+            if (width + x * 32 - camera.x > rectSize * 32){
+	            width = (rectSize * 32 - (x * 32 - camera.x));
+	        }
+	        if (height + y * 32 - camera.y > rectSize * 32){
+	            height = (rectSize * 32 - (y * 32 - camera.y));
+	        }
+            ctx.fillRect(x * 32 - camera.x, y * 32 - camera.y, width, height);
         };
     }
     let map = game.map;
     console.log(map);
     game.mapping = new Mapping(game.map);
-
+    //handy methods
+    //onclick
+    let handlerList = [];
+    function Handler(x, y, f){
+        this.x = x;
+        this.y = y;
+        this.f = f;
+    }
+    game.tileonclick = function(x, y, f){
+        handlerList.push(new Handler(x, y, f));
+    }
     
     //camera-ing
     let keys = {};
@@ -296,8 +382,24 @@ function initGame(socket, game, user){
     $(document).keyup(function(e){
         keys[e.key] = false;
     });
+    //on canvas right (no mobile)
+    $('#canvasDiv, #toolTips').on('contextmenu', function(e){
+        //prevent context menu
+        e.preventDefault();
+        //hide tool tip when available
+        if (tooltipAppear){
+            $('#toolTips').hide();
+            tooltipAppear = false;
+        }
+        if (selecting){
+            selecting = false;
+            $('#hintBar').hide();
+            camera.locked = false;
+            startRender();
+        }
+    });
     //key-ing
-    //on canvas only
+    //on canvas left
     $canvas.on(isMobile ? 'touchend' : 'click', function(evt){
         // check for mouse click
         var x = evt.pageX - $canvas.offset().left;
@@ -309,52 +411,79 @@ function initGame(socket, game, user){
         $toolTips.hide();
         //check if in canvas
         if (x >= 0 && y >= 0 && x <= rectSize * 32 && y <= rectSize * 32){
-            console.log('in canvas');
-            //check unit
             let xIndex = Math.floor((x + camera.x) / 32);
             let yIndex = Math.floor((y + camera.y) / 32);
+            //if selecting something
+            if (selecting){
+                //loop through available points
+                for (let i = 0; i < handlerList.length; i ++){
+                    let handler = handlerList[i];
+                    if (xIndex === handler.x && yIndex === handler.y){
+                        //yes the point!
+                        if (typeof handler.f === 'function'){
+                            handler.f();
+                        }
+                        //empty the handler
+                        handlerList = [];
+                        return;
+                    }
+                }
+            }
+            //check unit and render unit tooltip
             let tile = game.board.tiles[xIndex][yIndex];
             if (tile.units.length > 0){
                 tile.units.forEach((v, i) => {
                     $toolTips.show();
                     setToolTip(v);
                     $toolTips.offset({top: y, left: x});
+                    tooltipAppear = true;
                 });
             }
         }
     });
     //interval
     setInterval(function(){
+        //utility
+        function common(){
+            hideToolTip();
+        }
+        //render coin
+        renderGold(game.you.coin)
+        //disable moving of camera
         if (camera.locked){
             return;
-        }
-        //movement of camera
-        if (keys.a && camera.x - 5 >= 0){
-            camera.x -= 5;
-            $('#toolTips').hide();
-        }
-        if (keys.d && camera.x + 5 <= c.width - rectSize * 32){
-            camera.x += 5;
-            $('#toolTips').hide();
-        }
-        if (keys.w && camera.y - 5 >= 0){
-            camera.y -= 5;
-            $('#toolTips').hide();
-        }
-        if (keys.s && camera.y + 5 <= c.height - rectSize * 32){
-            camera.y += 5;
-            $('#toolTips').hide();
+        }else{
+            //movement of camera
+            if (keys.a && camera.x - 5 >= 0){
+                camera.x -= 5;
+                common();
+            }
+            if (keys.d && camera.x + 5 <= c.width - rectSize * 32){
+                camera.x += 5;
+                common();
+            }
+            if (keys.w && camera.y - 5 >= 0){
+                camera.y -= 5;
+                common();
+            }
+            if (keys.s && camera.y + 5 <= c.height - rectSize * 32){
+                camera.y += 5;
+                common();
+            }
         }
         //rendering map
-        game.mapping.drawBG(camera.x, camera.y);
-        game.mapping.drawUnits();
-        game.mapping.drawFog();
+        //if disabled
+        if (rendering){
+            game.mapping.drawBG(camera.x, camera.y);
+            game.mapping.drawUnits();
+            game.mapping.drawFog();
+        }
     }, 25);
     //move player according to p1 or p2
     if (game.you === game.p1){
-        camera.shiftTo(0, 500);
+        camera.shiftTo(0, rectSize * 32);
     }else{
-        camera.shiftTo(500, 0);
+        camera.shiftTo(rectSize * 32, 0);
     }
     //unit constructor
     function newUnitTile(image, name, cost, f){
@@ -389,13 +518,45 @@ function initGame(socket, game, user){
         let $menu = $('<div>').addClass('shopMenu');
         $('#tableContent').append($menu);
         $menu.append($("<div>").text('Purchase Units').addClass('menuTitle'))
-        $menu.append(newUnitTile('img/units/baseUnit.png', 'base unit', 100));
+        $menu.append(newUnitTile('img/units/baseUnit.png', 'base unit', 100, function(){
+            window.scrollTo(0,0);
+            //then callback
+            if (game.you === game.p1){
+                camera.shiftTo(0, rectSize * 32, callback);
+            }else{
+                camera.shiftTo(rectSize * 32, 0, callback);
+            }
+            //make it look synchronous
+            function callback(){
+                stopRender();
+                camera.locked = true;
+                selecting = true;
+                //let player choose tile
+                let hintBar = setHintBar(rectSize * 32 / 6 - 55, 100, 'Choose the tile you want the unit to be in', 25, "#74a6f7", rectSize * 32 * 2 / 3);
+                //select a tile plz
+                let redTiles = game.you.spawn;
+                redTiles.forEach(function(v, i){
+                    //render
+                    ctx.globalAlpha = 0.5;
+                    game.mapping.drawRect(v[0], v[1], 'red');
+                    ctx.globalAlpha = 1;
+                    game.tileonclick(v[0], v[1], function(){
+                        //emit request
+                        game.socket.emit('newUnit', 'baseUnit', v[0], v[1]);
+                    });
+                });
+            }
+        }));
         //make tooltip alive
         $('.unitBlock').tooltip(); 
     });
     //button of the setting
     $('#settingButton').click(function(){
         $('#tableContent').empty();
+    });
+    //common
+    $('.menuButtons').click(function(){
+        hideToolTip();
     });
 }
 
