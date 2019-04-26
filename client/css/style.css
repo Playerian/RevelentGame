@@ -87,6 +87,12 @@
     z-index: 2;
 }
 
+#toolTipExit{
+    position:relative;
+    margin-left: auto;
+    margin-bottom: -16px;
+}
+
 #name{
     font-size: 25px;
 }
@@ -187,13 +193,25 @@
     display: flex;
 }
 
-.shopMenu{
+.shopMenu, .unitMenu{
     width: 100%;
 }
 
 .menuTitle{
     text-align:center;
     margin-bottom: 15px;
+}
+
+.nextTurn{
+    text-align: center;
+    position: relative;
+    margin-left: auto;
+    width: 65px;
+    margin-bottom: -30px;
+    height: 30px;
+    color: red;
+    border: solid 1px cyan;
+    background: gray;
 }
 
 /* block css */

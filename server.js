@@ -51,8 +51,10 @@ io.on('connection', function (socket) {
   //debuging
   if (debugging){
     let game = new Game(map1, new Player("player1bug", socket.id), new Player("p2 boi", 'nil'));
+    game.board.newUnit(new Combatant({player: game.p2}, 20, 10, 20, 'baseUnit', randomName(), 10, 10, 10, 10, 3), 20, 10);
     socket.emit('game', game, game.p1);
-    socket.emit('render', game.renderData(game.p1))
+    socket.emit('render', game.renderData(game.p1));
+    game.oneLoop(game);
   }
 });
 
@@ -213,6 +215,7 @@ class Tile{
 class Board{
   constructor(map, game){
     //load the map first
+    this.moveableUnits = [];
     let theMap = JSON.parse(JSON.stringify(map));
     this.tiles = JSON.parse(JSON.stringify(map));
     this.unitLists = [];
@@ -280,12 +283,20 @@ class Board{
     }
     //add id
     unit.unitId = this.unitLists.length - 1;
+    //push if movable
+    if (unit.type !== 'tower' && unit.type !== 'warden' && unit.type !== 'nexus'){
+      this.moveableUnits.push(unit);
+    }
     return unit;
   }
   removeUnit(unit){
     let id = unit.unitId;
     //remove from board list
     this.unitLists.splice(this.unitLists.indexOf(unit), 1);
+    //remove from movable unit
+    if (unit.type === 'tower' || unit.type === 'warden' || unit.type === 'nexus'){
+      this.moveableUnits.splice(this.moveableUnits.indexOf(unit), 1);
+    }
     //remove from tile
     let tile;
     if (this.tiles[unit.x] && this.tiles[unit.x][unit.y]){
@@ -298,16 +309,19 @@ class Board{
     }
     return unit;
   }
-  //getter
-  get moveableUnits(){
-    let arr = [];
+  //searcher
+  searchById(id){
+    let unit;
     this.unitLists.forEach(function(v){
-      if (v.type !== 'tower' && v.type !== 'warden' && v.type !== 'nexus'){
-        arr.push(v);
+      if (v.unitId === id){
+        unit = v;
+        return unit;
       }
     });
-    return arr;
+    return unit;
   }
+  //getter
+  
 }
 
 //classic game classing
@@ -341,13 +355,27 @@ class Game {
       p1Socket.on('newUnit', function(unit, x, y){
         game.addNewUnit(p1Socket, unit, x, y);
       });
+      p1Socket.on('endTurn', function(socketId, unit){
+        game.endTurn(socketId, unit);
+      });
     }
     if (p2Socket){
       p2Socket.on('newUnit', function(unit, x, y){
         game.addNewUnit(p2Socket, unit, x, y);
       });
+      p2Socket.on('endTurn', function(socketId, unit){
+        game.endTurn(socketId, unit);
+      });
     }
   }
+  //getter
+  get p1Socket(){
+    return this.getSocket(this.p1.id);
+  }
+  get p2Socket(){
+    return this.getSocket(this.p2.id);
+  }
+  //methods for socket event
   addNewUnit(socket, unit, x, y){
     let game = this;
     let player = game.getPlayerById(socket.id);
@@ -384,6 +412,24 @@ class Game {
       game.getSocket(game.p2).emit('render', game.renderData(game.p2));
     }
   }
+  endTurn(socketId, united){
+    //search unit base on unit id
+    let unit = this.board.searchById(united.unitId);
+    //check if same socket by comparing socket id
+    if (unit.id === socketId){
+      //same id
+      //check if turn
+      if (this.turn === unit){
+        //end turn
+        let units = this.board.moveableUnits;
+        units[0].runTime = 0;
+        units.push(units.shift());
+        //then run loop
+        this.oneLoop(this);
+      }
+    }
+  }
+  //utlity methods
   getPlayerByName(name){
     if (name === this.p1.name){
       return this.p1;
@@ -406,26 +452,48 @@ class Game {
       return socketList[id.id];
     }
   }
+  //render methods
   renderData(player){
     //clone the current board
     let data = new RenderData(this, player, JSON.parse(JSON.stringify(this.board)));
     return data;
   }
+  sendRenderData(){
+    if (this.p1Socket){
+      this.p1Socket.emit('render', this.renderData(this.p1));
+    }
+    if (this.p2Socket){
+      this.p2Socket.emit('render', this.renderData(this.p2));
+    }
+  }
   //unit loop
   oneLoop(game){
-    //increase every unit
     let units = this.board.moveableUnits;
-    units.forEach(function(v){
-      v.runTime += v.runSpeed;  
-    });
-    //sort
-    units.sort(function(a, b){
-      return parseFloat(b.runTime) - parseFloat(a.runTime);
-    });
-    //check over 100
-    if (units[0].runTime >= 100){
-      this.turn = units[0];
+    //while less than 100
+    if (debugging){
+      if (units[0].name === "p2 boi"){
+        units[0].runTime = 0;
+      }
     }
+    while(units[0].runTime < 100){
+      //increase every unit
+      units.forEach(function(v){
+        v.runTime += v.runSpeed;  
+      });
+      //sort
+      units.sort(function(a, b){
+        return parseFloat(b.runTime) - parseFloat(a.runTime);
+      });
+      if (debugging){
+        if (units[0].name === "p2 boi"){
+          units[0].runTime = 0;
+        }
+      }
+    }
+    this.turn = units[0];
+    console.log(this.turn);
+    //emitting
+    this.sendRenderData();
     //aftermath
     /*
     this.loop.push(this.loop.shift());
@@ -439,8 +507,13 @@ class RenderData{
     //send player
     //duplicate player
     this.player = player;
-    //send rendering board
+    //send rendering dupe board
     this.board = boarding;
+    //remove board unit
+    this.board.unitLists = [];
+    this.board.moveableUnits = [];
+    //send current unit
+    this.turn = game.turn;
     let board = this.board;
     board.setAllFog = function(){
       let theMap = this.tiles;
@@ -475,13 +548,12 @@ class RenderData{
         }
       }
     };
-    let list = board.unitLists;
-    let tiles = board.tiles;
+    let realList = game.board.unitLists;
     //add fog of war to all tiles
     board.setAllFog();
     //loop through the list and get fog of war
-    for (let i = 0; i < list.length; i ++){
-      let unit = list[i];
+    for (let i = 0; i < realList.length; i ++){
+      let unit = realList[i];
       if (unit.player.name === player.name){
         //clear fog of war
         switch (unit.type){
@@ -501,19 +573,36 @@ class RenderData{
       }
     }
     //send unit list
-    this.unitList = [];
-    let realUnitList = game.board.moveableUnits;
+    let fakeList = this.board.unitLists;
+    let fakeMoveList = this.board.moveableUnits;
+    let realUnitList = game.board.unitLists;
+    //sort unit list
+    realUnitList.sort(function(a, b){
+      return parseFloat(b.runTime) - parseFloat(a.runTime);
+    });
     //make unit unknown if in fog
     //load previous
     let known = player.knownUnit;
+    //set tiles to made board
+    let tiles = board.tiles;
     //loop through
     for (let i = 0; i < realUnitList.length; i ++){
       //check if in fog
       let unit = realUnitList[i];
       //if player
       if (unit.type === 'player'){
-        //just push
-        this.unitList.push(unit);
+        //see if opponent player
+        if (unit !== player){
+          //remove id before pushing
+          let fake = Object.assign({}, unit);
+          fake.id = undefined;
+          fakeList.push(fake);
+          fakeMoveList.push(fake);
+        }else{
+          //just push
+          fakeList.push(unit);
+          fakeMoveList.push(unit);
+        }
       }
       //if fog
       else if (tiles[unit.x][unit.y].fog === true){
@@ -524,12 +613,27 @@ class RenderData{
           
         }
         */
-        //push a ghost
-        this.unitList.push('?');
+        //check if tower or nexus
+        if (unit.type === 'tower' || unit.type === 'nexus'){
+          //push it
+          fakeList.push(unit);
+        }else{
+          //push a ghost
+          fakeList.push(unit.runTime);
+          fakeMoveList.push(unit.runTime);
+        }
       }
       //if no fog then push
       else {
-        this.unitList.push(unit);
+        if (unit.type === 'nexus'){
+          console.log(tiles[unit.x][unit.y]);
+        }
+        //remove id if opponent
+        if (unit.player !== player){
+          unit.player = 'not you';
+        }
+        fakeList.push(unit);
+        fakeMoveList.push(unit);
       }
     }
   }

@@ -42,6 +42,8 @@ if (debugging){
             camera.locked = false;
             selecting = false;
             hideHintBar();
+            //render the bottom stuff
+            game.renderAll();
         });
         game.socket.once('reset', function(){
             //remove tooltips and stuff
@@ -108,6 +110,7 @@ let lockKeys = false;
 var rectSize = 15;
 let selecting = false;
 let tooltipAppear = false;
+let currentTab = -1;
 
 //set canvas 
 $('#canvasDiv').css('width', (rectSize * 32) + 'px');
@@ -116,8 +119,15 @@ $('#canvasDiv').css('height', (rectSize * 32) + 'px');
 //utility
 function setToolTip(unit){
     let $toolTip = $('#toolTips');
+    $toolTip.css('visibility', 'visible');
     let $descri = $('.description');
     $descri.hide();
+    let $exit = $toolTip.find('#toolTipExit');
+    $exit.off('click');
+    $exit.click(function(){
+        $toolTip.hide();
+        tooltipAppear = false;
+    })
     $toolTip.find('#name').text(unit.name);
     $toolTip.find('#class').text(unit.type);
     //attributes
@@ -486,10 +496,10 @@ function initGame(socket, game, user){
         camera.shiftTo(rectSize * 32, 0);
     }
     //unit constructor
-    function newUnitTile(image, name, cost, f){
+    function newUnitTile(image, name, cost, img, title, f){
         let $unitBlock = $('<div>').addClass('unitBlock');
         $unitBlock.attr('data-toggle', 'tooltip');
-        $unitBlock.attr('title', 'Purchase?');
+        $unitBlock.attr('title', title);
         let $img = $('<img>').attr('src', image)
         $unitBlock.append($img);
         let $unitName = $('<div>').text(name).addClass('unitName');
@@ -497,28 +507,67 @@ function initGame(socket, game, user){
         let $costDiv = $('<div>').addClass('costDiv');
         let $cost = $('<div>').append(cost);
         $costDiv.append($cost);
-        $costDiv.append($('<img>').attr('src', '/img/misc/money.png'));
+        if (img){
+            $costDiv.append($('<img>').attr('src', img));
+        }
         $unitBlock.append($costDiv);
-        $unitBlock.click(function(){
+        $unitBlock.click(function(evt){
             $(this).tooltip("hide");
             if (typeof f === 'function'){ 
-                f();
+                f(evt);
             }
         });
         return $unitBlock;
     }
     //button of the unitlist
-    $('#unitButton').click(function(){
+    $('#unitButton').click(renderUnits);
+    function renderUnits(e){
+        currentTab = 0;
         $('#tableContent').empty();
-    });
+        //append from units
+        let $menu = $('<div>').addClass('unitMenu');
+        $('#tableContent').append($menu);
+        //next turn button
+        let $next = $("<div>").addClass('nextTurn');
+        $next.text('End Turn');
+        $next.attr('data-toggle', 'tooltip');
+        $next.attr('title', `For player unit's end turn button`);
+        $next.tooltip();
+        $next.click(function(){
+            //dont even check, check on server side
+            game.socket.emit('endTurn', socket.socket.sessionid, game.you);
+        })
+        $menu.append($next);
+        //title
+        $menu.append($("<div>").text('Unit Cycle').addClass('menuTitle'))
+        //loop through unit list
+        for(let i = 0; i < game.data.board.moveableUnits.length; i ++){
+            let unit = game.data.board.moveableUnits[i];
+            //if unknown
+            if (typeof unit !== 'object'){
+                $menu.append(newUnitTile('img/units/unknown.png', 'Unknown Unit', unit));
+                continue;
+            }
+            //if known
+            $menu.append(newUnitTile(unit.sprite, unit.name, unit.runTime, undefined, 'click for info',function(evt){
+                let $toolTip = setToolTip(unit);
+                $toolTip.show();
+                $toolTip.offset({top: evt.pageY, left: evt.pageX});
+                tooltipAppear = true;
+            }));
+        }
+        $('.unitBlock').tooltip(); 
+    }
     //button of the shoplist
-    $('#shopButton').click(function(){
+    $('#shopButton').click(renderShop);
+    function renderShop(e){
+        currentTab = 1;
         //empty the thing
         $('#tableContent').empty();
         let $menu = $('<div>').addClass('shopMenu');
         $('#tableContent').append($menu);
-        $menu.append($("<div>").text('Purchase Units').addClass('menuTitle'))
-        $menu.append(newUnitTile('img/units/baseUnit.png', 'base unit', 100, function(){
+        $menu.append($("<div>").text('Purchase Units').addClass('menuTitle'));
+        $menu.append(newUnitTile('img/units/baseUnit.png', 'base unit', 100, '/img/misc/money.png', 'Purchase?', function(){
             window.scrollTo(0,0);
             //then callback
             if (game.you === game.p1){
@@ -549,11 +598,27 @@ function initGame(socket, game, user){
         }));
         //make tooltip alive
         $('.unitBlock').tooltip(); 
-    });
+    }
     //button of the setting
-    $('#settingButton').click(function(){
+    $('#settingButton').click(renderSetting);
+    function renderSetting(e){
+        currentTab = 2;
         $('#tableContent').empty();
-    });
+    }
+    //one big render all
+    game.renderAll = function(){
+        switch (currentTab){
+            case 0:
+            renderUnits();
+            break;
+            case 1:
+            renderShop();
+            break;
+            case 2:
+            renderSetting();
+            break;
+        }
+    }
     //common
     $('.menuButtons').click(function(){
         hideToolTip();
