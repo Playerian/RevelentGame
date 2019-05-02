@@ -20,6 +20,7 @@ server.listen(port);
 
 //serving static files
 app.use(express.static('client'));
+app.use('/favicon.ico', express.static('images/favicon.ico'));
 
 //serving html file
 app.all('/', function (req, res) {
@@ -400,7 +401,9 @@ class Game {
         //deduct coin
         if (player.coin >= 100){
           player.coin -= 100;
-          game.board.newUnit(new Combatant({}, x, y, 20, 'baseUnit', randomName(), 10, 10, 10, 10, 3), x, y);
+          let newunit = new Combatant({}, x, y, 20, 'baseUnit', randomName(), 10, 10, 10, 10, 3);
+          newunit.player = player;
+          game.board.newUnit(newunit, x, y);
         }
       }
     }
@@ -466,13 +469,42 @@ class Game {
       this.p2Socket.emit('render', this.renderData(this.p2));
     }
   }
+  grabTiles(tiles, x, y, tileNo, self){
+    let allTiles = [];
+    if (self){
+      allTiles.push(tiles[x][y]);
+    }
+    for (let i = 1; i <= tileNo; i ++){
+      //side
+      (tiles[x + i]) && (tiles[x + i][y]) && (allTiles.push(tiles[x + i][y]));
+      (tiles[x - i]) && (tiles[x - i][y]) && (allTiles.push(tiles[x - i][y]));
+      (tiles[x]) && (tiles[x][y + i]) && (allTiles.push(tiles[x][y + i]));
+      (tiles[x]) && (tiles[x][y - i]) && (allTiles.push(tiles[x][y - i]));
+      //edge
+      for (let i2 = 1; i2 < i; i2 ++){
+        let xMove = i2;
+        let yMove = i - i2;
+        (tiles[x + xMove]) && (tiles[x + xMove][y + yMove]) && (allTiles.push(tiles[x + xMove][y + yMove]));
+        (tiles[x - xMove]) && (tiles[x - xMove][y + yMove]) && (allTiles.push(tiles[x - xMove][y + yMove]));
+        (tiles[x + xMove]) && (tiles[x + xMove][y - yMove]) && (allTiles.push(tiles[x + xMove][y - yMove]));
+        (tiles[x - xMove]) && (tiles[x - xMove][y - yMove]) && (allTiles.push(tiles[x - xMove][y - yMove]));
+      }
+    }
+    return allTiles;
+  }
   //unit loop
   oneLoop(game){
     let units = this.board.moveableUnits;
     //while less than 100
     if (debugging){
-      if (units[0].name === "p2 boi"){
+      let preventer = 0;
+      while (units[0].player.name === "p2 boi" || units[0].name === 'p2 boi'){
         units[0].runTime = 0;
+        units.push(units.shift());
+        preventer ++;
+        if (preventer > 50){
+          break;
+        }
       }
     }
     while(units[0].runTime < 100){
@@ -484,9 +516,15 @@ class Game {
       units.sort(function(a, b){
         return parseFloat(b.runTime) - parseFloat(a.runTime);
       });
-      if (debugging){
-        if (units[0].name === "p2 boi"){
-          units[0].runTime = 0;
+    }
+    if (debugging){
+      let preventer = 0;
+      while (units[0].player.name === "p2 boi" || units[0].name === 'p2 boi'){
+        units[0].runTime = 0;
+        units.push(units.shift());
+        preventer ++;
+        if (preventer > 50){
+          break;
         }
       }
     }
@@ -496,7 +534,7 @@ class Game {
     this.sendRenderData();
     //aftermath
     /*
-    this.loop.push(this.loop.shift());
+    
     this.turn = this.loop[0];
     */
   }    
@@ -531,22 +569,10 @@ class RenderData{
       let x = unit.x;
       let y = unit.y;
       tiles[x][y].fog = false;
-      for (let i = 1; i <= tileNo; i ++){
-        //side
-        (tiles[x + i]) && (tiles[x + i][y]) && (tiles[x + i][y].fog = false);
-        (tiles[x - i]) && (tiles[x - i][y]) && (tiles[x - i][y].fog = false);
-        (tiles[x]) && (tiles[x][y + i]) && (tiles[x][y + i].fog = false);
-        (tiles[x]) && (tiles[x][y - i]) && (tiles[x][y - i].fog = false);
-        //edge
-        for (let i2 = 1; i2 < i; i2 ++){
-          let xMove = i2;
-          let yMove = i - i2;
-          (tiles[x + xMove]) && (tiles[x + xMove][y + yMove]) && (tiles[x + xMove][y + yMove].fog = false);
-          (tiles[x - xMove]) && (tiles[x - xMove][y + yMove]) && (tiles[x - xMove][y + yMove].fog = false);
-          (tiles[x + xMove]) && (tiles[x + xMove][y - yMove]) && (tiles[x + xMove][y - yMove].fog = false);
-          (tiles[x - xMove]) && (tiles[x - xMove][y - yMove]) && (tiles[x - xMove][y - yMove].fog = false);
-        }
-      }
+      let tilesss = game.grabTiles(tiles, x, y, tileNo, true);
+      tilesss.forEach(function(v){
+        v.fog = false;
+      });
     };
     let realList = game.board.unitLists;
     //add fog of war to all tiles
@@ -576,33 +602,28 @@ class RenderData{
     let fakeList = this.board.unitLists;
     let fakeMoveList = this.board.moveableUnits;
     let realUnitList = game.board.unitLists;
-    //sort unit list
-    realUnitList.sort(function(a, b){
-      return parseFloat(b.runTime) - parseFloat(a.runTime);
-    });
+    let realMovable = game.board.moveableUnits;
     //make unit unknown if in fog
     //load previous
     let known = player.knownUnit;
     //set tiles to made board
     let tiles = board.tiles;
-    //loop through
+    //make fake unit list
     for (let i = 0; i < realUnitList.length; i ++){
       //check if in fog
       let unit = realUnitList[i];
+      let fake = Object.assign({}, unit);
+      //settle security
+      if (unit.player !== player && unit !== player){
+        fake.player = 'not you';
+      }
       //if player
       if (unit.type === 'player'){
-        //see if opponent player
+        //if opponent
         if (unit !== player){
-          //remove id before pushing
-          let fake = Object.assign({}, unit);
           fake.id = undefined;
-          fakeList.push(fake);
-          fakeMoveList.push(fake);
-        }else{
-          //just push
-          fakeList.push(unit);
-          fakeMoveList.push(unit);
         }
+        fakeList.push(fake);
       }
       //if fog
       else if (tiles[unit.x][unit.y].fog === true){
@@ -613,27 +634,42 @@ class RenderData{
           
         }
         */
-        //check if tower or nexus
         if (unit.type === 'tower' || unit.type === 'nexus'){
-          //push it
-          fakeList.push(unit);
+          fakeList.push(fake);
         }else{
-          //push a ghost
           fakeList.push(unit.runTime);
-          fakeMoveList.push(unit.runTime);
         }
       }
       //if no fog then push
       else {
-        if (unit.type === 'nexus'){
-          console.log(tiles[unit.x][unit.y]);
-        }
         //remove id if opponent
-        if (unit.player !== player){
-          unit.player = 'not you';
+        fakeList.push(fake);
+      }
+    }
+    //make fake movable
+    for (let i = 0; i < realMovable.length; i ++){
+      let unit = realMovable[i];
+      let fake = Object.assign({}, unit);
+      //settle security
+      if (unit.player !== player && unit !== player){
+        fake.player = 'not you';
+      }
+      //if player
+      if (unit.type === 'player'){
+        //if opponent
+        if (unit !== player){
+          fake.id = undefined;
         }
-        fakeList.push(unit);
-        fakeMoveList.push(unit);
+        fakeMoveList.push(fake);
+      }
+      //if fog
+      else if (tiles[unit.x][unit.y].fog === true){
+        fakeMoveList.push(unit.runTime);
+      }
+      //if no fog then push
+      else {
+        //remove id if opponent
+        fakeMoveList.push(fake);
       }
     }
   }

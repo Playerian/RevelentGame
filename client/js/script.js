@@ -44,6 +44,8 @@ if (debugging){
             hideHintBar();
             //render the bottom stuff
             game.renderAll();
+            //check turn though
+            game.renderCurrent();
         });
         game.socket.once('reset', function(){
             //remove tooltips and stuff
@@ -94,7 +96,7 @@ function newCam(){
                 camera.game.mapping.drawFog();
             }
             //exit
-            if (times === frames){
+            if (times === frames || (camera.x === x && camera.y === y)){
                 camera.locked = false;
                 clearInterval(interval);
                 if (typeof callback === 'function'){
@@ -219,10 +221,14 @@ let rendering = true;
 
 function stopRender(){
     rendering = false;
+    camera.locked = true;
+    selecting = true;
 }
 
 function startRender(){
     rendering = true;
+    camera.locked = false;
+    selecting = false;
 }
 
 //including sprites
@@ -299,7 +305,7 @@ function initGame(socket, game, user){
             if (checkPoint === 4){
                 return true;
             }
-        }
+        };
         this.drawUnits = function(){
             //getting all units
             let f = this.renderable;
@@ -324,9 +330,9 @@ function initGame(socket, game, user){
         	        dWidth = sWidth;
         	        dHeight = sHeight;
                     ctx.drawImage(image, 0, 0, sWidth, sHeight, unit.x * 32 - camera.x, unit.y * 32 - camera.y, dWidth, dHeight);
-                };
+                }
             });
-        }
+        };
         this.drawFog = function(){
             //draw fog
             let tiles = game.board.tiles;
@@ -380,10 +386,63 @@ function initGame(socket, game, user){
         this.y = y;
         this.f = f;
     }
+    game.grabTiles = function(tiles, x, y, tileNo, self){
+        let allTiles = [];
+        if (self){
+          allTiles.push(tiles[x][y]);
+        }
+        for (let i = 1; i <= tileNo; i ++){
+          //side
+          (tiles[x + i]) && (tiles[x + i][y]) && (allTiles.push(tiles[x + i][y]));
+          (tiles[x - i]) && (tiles[x - i][y]) && (allTiles.push(tiles[x - i][y]));
+          (tiles[x]) && (tiles[x][y + i]) && (allTiles.push(tiles[x][y + i]));
+          (tiles[x]) && (tiles[x][y - i]) && (allTiles.push(tiles[x][y - i]));
+          //edge
+          for (let i2 = 1; i2 < i; i2 ++){
+            let xMove = i2;
+            let yMove = i - i2;
+            (tiles[x + xMove]) && (tiles[x + xMove][y + yMove]) && (allTiles.push(tiles[x + xMove][y + yMove]));
+            (tiles[x - xMove]) && (tiles[x - xMove][y + yMove]) && (allTiles.push(tiles[x - xMove][y + yMove]));
+            (tiles[x + xMove]) && (tiles[x + xMove][y - yMove]) && (allTiles.push(tiles[x + xMove][y - yMove]));
+            (tiles[x - xMove]) && (tiles[x - xMove][y - yMove]) && (allTiles.push(tiles[x - xMove][y - yMove]));
+          }
+        }
+        return allTiles;
+    };
     game.tileonclick = function(x, y, f){
+        selecting = true;
         handlerList.push(new Handler(x, y, f));
+    };
+    game.renderCurrent = function(){
+        if (game.data.turn.player){
+            if (game.data.turn.player.unitId === game.you.unitId){
+                //let unit run the turn
+                let unit = game.data.turn;
+                //move camera to unit
+                camera.shiftTo(unit.x * 32 - rectSize * 16, unit.y * 32 - rectSize * 16, function(){
+                    //display tile selects to canvas
+                    //grab tiles
+                    let tiles = game.grabTiles(game.data.board.tiles, unit.x, unit.y, unit.mbi, false);
+                    //red square
+                    tiles.forEach((v) =>{
+                        ctx.globalAlpha = 0.5;
+                        game.mapping.drawRect(v.x, v.y, 'red');
+                        ctx.globalAlpha = 1;
+                        game.tileonclick(v.x, v.y, function(){
+                            //emit request
+                            game.socket.emit('unitMove', unit, v.x, v.y);
+                            startRender();
+                            hideHintBar();
+                        });
+                    });
+                    //wait for click
+                    stopRender();
+                    //hint bar also
+                    setHintBar(rectSize * 32 / 6 - 55, 100, 'Select a tile for unit to move', 25, "#74a6f7", rectSize * 32 * 2 / 3);
+                });
+            }
+        }
     }
-    
     //camera-ing
     let keys = {};
     $(document).keypress(function(e){
@@ -402,9 +461,7 @@ function initGame(socket, game, user){
             tooltipAppear = false;
         }
         if (selecting){
-            selecting = false;
             $('#hintBar').hide();
-            camera.locked = false;
             startRender();
         }
     });
@@ -578,8 +635,7 @@ function initGame(socket, game, user){
             //make it look synchronous
             function callback(){
                 stopRender();
-                camera.locked = true;
-                selecting = true;
+                
                 //let player choose tile
                 let hintBar = setHintBar(rectSize * 32 / 6 - 55, 100, 'Choose the tile you want the unit to be in', 25, "#74a6f7", rectSize * 32 * 2 / 3);
                 //select a tile plz
