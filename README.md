@@ -1,6 +1,5 @@
 ## Revelent Game
-not very revelent but usable
+Browser base battle chess game base on node.js. Not updating server side on github because of database exposure.
 
-## To-Dos
-4. unit movement tabs
-5. combat
+## Website
+https://limpidg2.herokuapp.com/
